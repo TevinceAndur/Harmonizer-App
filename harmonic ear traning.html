@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Harmonize in Thirds Trainer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.39/Tone.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pitchy@3.3.1/dist/pitchy.min.js"></script>
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 50px; }
+    #feedback { font-size: 1.5em; margin-top: 20px; }
+    #pitchDisplay { font-size: 1.2em; margin-top: 10px; color: #555; }
+    button { padding: 10px 20px; font-size: 1em; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>🎵 Harmonize in Thirds Trainer</h1>
+  <button onclick="startSession()">Play Random Note</button>
+  <div id="noteDisplay"></div>
+  <div id="feedback">🎤 Waiting for your note...</div>
+  <div id="pitchDisplay">Detected Pitch: -- Hz</div>
+
+  <script>
+    const notes = [
+      { note: "C4", freq: 261.63 },
+      { note: "D4", freq: 293.66 },
+      { note: "E4", freq: 329.63 },
+      { note: "F4", freq: 349.23 },
+      { note: "G4", freq: 392.00 },
+      { note: "A4", freq: 440.00 },
+      { note: "B4", freq: 493.88 },
+    ];
+
+    let targetFreq = null;
+    let audioContext, analyser, detector, detectorData;
+    let micReady = false;
+
+    async function initMic() {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const micSource = audioContext.createMediaStreamSource(micStream);
+
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      micSource.connect(analyser);
+
+      detectorData = new Float32Array(analyser.fftSize);
+      detector = Pitchy.createPitchDetector(detectorData.length, audioContext.sampleRate);
+
+      function listen() {
+        analyser.getFloatTimeDomainData(detectorData);
+        const [pitch, clarity] = detector.findPitch(detectorData);
+
+        if (clarity > 0.9 && pitch > 0) {
+          document.getElementById("pitchDisplay").innerText = 
+            `Detected Pitch: ${pitch.toFixed(2)} Hz`;
+
+          if (targetFreq) {
+            const centsDiff = 1200 * Math.log2(pitch / targetFreq);
+            const isCorrect = Math.abs(centsDiff) < 30;
+            document.getElementById("feedback").innerText = 
+              isCorrect ? '✅ Correct!' : `❌ Off by ${centsDiff.toFixed(1)} cents`;
+          } else {
+            document.getElementById("feedback").innerText = "🎤 Listening...";
+          }
+        } else {
+          document.getElementById("pitchDisplay").innerText = "Detected Pitch: -- Hz";
+          document.getElementById("feedback").innerText = "🎤 Listening...";
+        }
+
+        requestAnimationFrame(listen);
+      }
+
+      listen();
+      micReady = true;
+    }
+
+    async function startSession() {
+      if (!micReady) await initMic();
+
+      await Tone.start();
+      const synth = new Tone.Synth().toDestination();
+
+      const baseNote = notes[Math.floor(Math.random() * notes.length)];
+      targetFreq = baseNote.freq * Math.pow(2, 4 / 12); // Major third
+      synth.triggerAttackRelease(baseNote.freq, "1n");
+
+      document.getElementById("noteDisplay").innerText =
+        `🎼 Base Note: ${baseNote.note} — Harmonize a Major Third`;
+    }
+
+    // Initialize microphone right away so it doesn't ask each time
+    window.addEventListener('load', () => {
+      initMic().catch(err => {
+        alert("Microphone access denied or unavailable.");
+        console.error(err);
+      });
+    });
+  </script>
+</body>
+</html>
+
